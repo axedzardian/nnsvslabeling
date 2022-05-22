@@ -84,8 +84,47 @@ try:
                     frq.append(curr)
         del frq[0]
         
+    try:
+    plugin = pyutau.UtauPlugin(sys.argv[-1])
+    lab = open(input('Drag and drop the .lab file here: ').strip('"')).readlines()
+    phonemes = []
+    duration = []
+    pitches = []
+    ups = 480 * float(plugin.settings['Tempo']) / 60
+    pps = 44100 / 256
+
+    frq_loc = input('Drag and drop the .frq file here (leave blank if no frq): ').strip('"')
+    frq = [0]
+    
+    #Save phonemes in duration in list. Convert durations to note lengths
+    for i in lab:
+        ph = i.strip().split()
+        phonemes.append(ph[2])
+        duration.append(ups * (float(ph[1]) - float(ph[0])) / (10 ** 7))
+
+    #Load in frequency file if it's inputted
+    if frq_loc:
+        print('Reading .frq file...')
+        with open(frq_loc, 'rb') as f:
+            header_text = f.read(8).decode('utf-8')
+            assert header_text == 'FREQ0003'
+
+            samples_per_frq = struct.unpack('<i', f.read(4))[0]
+            assert samples_per_frq == 256
+
+            f.read(24)
+
+            num_chunks = struct.unpack('<i', f.read(4))[0]
+
+            for i in range(num_chunks):
+                curr = struct.unpack('<2d', f.read(16))[0]
+                if curr <= 55:
+                    frq.append(frq[-1])
+                else:
+                    frq.append(curr)
+
     #Ask if the label is Japanese or not.
-    jpn = input('Is this label for Japanese? [y/n] ')
+    jpn = input('Is this label for Thai? [y/n] ')
     if jpn.lower() == 'y':
         jpn = True
     else:
@@ -95,8 +134,8 @@ try:
     if fuse.lower() == 'y':
         if jpn:
         #Fuse CVs
-            vowels = ['a', 'i', 'u', 'e', 'o']
-            standalone = ['N', 'cl', 'pau', 'br', 'vf', 'sil', 'Edge']
+            vowels = ['a', 'i', 'u', 'oo', 'e', 'ae', 'ia', 'ua', 'ooa', 'o', 'oh', 'eh', 'ai', 'ao']
+            standalone = ['N', 'cl', 'pau', 'br', 'vf', 'sil', 'exhale', 'NG', 'M', 'W', 'gcl', 'bcl', 'dcl']
             for i in range(len(duration) - 1, -1, -1):
                 if phonemes[i][0] not in vowels:
                     if phonemes[i] in standalone:
@@ -109,13 +148,11 @@ try:
                             del phonemes[i]
         else:
             vowels = None
-            standalone = ['cl', 'pau', 'br', 'vf', 'sil', 'Edge']
+            standalone = ['cl', 'pau', 'br', 'vf', 'sil']
             phoneme_mode = input('Select phoneme set\n1: Arpabet\n2: X-Sampa\n')
             if phoneme_mode == '1':
-                #Vowel list based on Arpasing
                 vowels = ['aa', 'ae', 'ah', 'ao', 'ax', 'eh', 'er', 'ih', 'iy', 'uh', 'uw', 'aw', 'ay', 'ey', 'ow', 'oy']
             else:
-                #Vowel list from https://en.wikipedia.org/wiki/X-SAMPA#Vowels
                 vowels = ['i', 'y', '1', '}', 'M', 'u', 'I', 'Y', 'I\\', 'U\\', 'U', 'e', '2', '@\\', '8', '7', 'o', 'e_o', '2_o', '@', 'o_o', 'E', '9', '3', '3\\', 'V', 'O', '{', '6', 'a', '&', 'a_"', 'A', 'Q']
             phoneme_ranges = []
             duration_ranges = []
@@ -171,7 +208,7 @@ try:
             phonemes = new_phonemes
             duration = new_duration
 
-    #Make pitch list
+    #Make pitch array
     if frq_loc:
         start = 0
         for i in range(len(duration)):
@@ -179,6 +216,7 @@ try:
             i_start = int(round(start * pps))
             i_end = int(round(end * pps))
             pitch = hz_to_midi(base_frq(frq[i_start:i_end]))
+            print(pitch)
             pitches.append(pitch)
             start = end
     else:
@@ -204,7 +242,6 @@ try:
         quant_strength = 60
     else:
         quant_strength = int(quant_strength)
-        
     #Compensate for quantization
     for i in range(0, len(duration) - 1):
         quant_dur = quantize(duration[i], quant_strength)
